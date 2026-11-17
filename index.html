@@ -120,7 +120,7 @@ var MOD={
   {k:'month',l:'For month',t:'sel',o:MONTHS},
   {k:'mode',l:'Mode',t:'sel',o:MODES},{k:'note',l:'Remarks',t:'text',opt:1}]}
 };
-var SHEET_URL='https://script.google.com/macros/s/AKfycbyQrk1HLBIUHf5wRYOKCjfkNh-3XGnt7HQP3_VEIJ02EEo_a0gWpQEnzn6fnD2RPTTYag/exec';
+var SHEET_URL='https://script.google.com/macros/s/AKfycbxztBYPS-SB3G3NVSBjPbRjeSQYGLnLKSq21Q_4BhZH/dev';
 var toastTimer;
 function toast(m){var t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';t.setAttribute('role','status');document.body.appendChild(t);}
   t.textContent=m;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.classList.remove('show');},3000);}
