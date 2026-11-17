@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>School Account Register</title>
+<style>
+:root{--bg:#eef2f4;--card:#fff;--ink:#14283a;--mute:#5d6f7d;--line:#d3dde3;--acc:#0b6e6e;--acc-ink:#fff;--warn:#b3261e;--hi:#e7f3f2;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a22;--card:#17252f;--ink:#e6eef3;--mute:#93a6b3;--line:#2b3d49;--acc:#4fc0b8;--acc-ink:#0b1a20;--warn:#ff8a80;--hi:#1c3340;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1a22;--card:#17252f;--ink:#e6eef3;--mute:#93a6b3;--line:#2b3d49;--acc:#4fc0b8;--acc-ink:#0b1a20;--warn:#ff8a80;--hi:#1c3340;color-scheme:dark}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+header{padding:18px 16px 8px;max-width:1100px;margin:auto}
+h1{margin:0;font-size:1.5rem;letter-spacing:.2px}
+header p{margin:2px 0 0;color:var(--mute)}
+nav{display:flex;gap:6px;overflow-x:auto;padding:10px 16px;max-width:1100px;margin:auto}
+nav button{flex:none;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:9px 14px;border-radius:8px;font:inherit;cursor:pointer}
+nav button[aria-selected="true"]{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font-weight:600}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+main{max-width:1100px;margin:auto;padding:6px 16px 40px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.panel h2{margin:0 0 12px;font-size:1.05rem}
+form{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}
+label{display:flex;flex-direction:column;gap:3px;font-size:.82rem;color:var(--mute)}
+input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px;width:100%}
+input[readonly]{background:var(--hi);font-weight:600}
+.btn{border:0;background:var(--acc);color:var(--acc-ink);font:inherit;font-weight:600;padding:10px 14px;border-radius:6px;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:400}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:16px}
+.stat{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--acc);border-radius:8px;padding:10px 12px}
+.stat span{display:block;color:var(--mute);font-size:.8rem}
+.stat b{font-size:1.25rem}
+.neg{color:var(--warn)}
+.wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:560px}
+th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:.8rem;color:var(--mute);font-weight:600}
+td.n,th.n{text-align:right}
+tfoot td{font-weight:700;background:var(--hi)}
+.x{background:none;border:0;color:var(--warn);cursor:pointer;font-size:1rem}
+.tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.tools input{max-width:240px}
+.empty{color:var(--mute);padding:14px 0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+@media print{nav,form,.tools,.x,.noprint{display:none!important}body{background:#fff;color:#000}}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:.9rem;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <h1>School account register</h1>
+  <p>Van fuel, staff pay, expenses and student fees in one place. Entries are saved in this browser and sent to your Google Sheet.</p>
+</header>
+<nav id="tabs" role="tablist"></nav>
+<main id="view"></main>
+
+<script>
+var KEY='schoolAccountRegister_v1';
+var DB={fuel:[],repair:[],salary:[],expense:[],fees:[]};
+try{var s=localStorage.getItem(KEY);if(s)DB=Object.assign(DB,JSON.parse(s));}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(DB));}catch(e){}}
+var today=new Date().toISOString().slice(0,10);
+var SESS=['2025-26','2026-27','2027-28'];
+var MONTHS=['April','May','June','July','August','September','October','November','December','January','February','March'];
+var MODES=['Cash','UPI','Bank','Cheque'];
+var inr=function(n){return '\u20B9'+(Number(n)||0).toLocaleString('en-IN',{maximumFractionDigits:2});};
+
+var MOD={
+ fuel:{title:'Van fuel',group:'fuelType',gl:'Fuel type',fields:[
+  {k:'date',l:'Date',t:'date'},{k:'van',l:'Van no.',t:'text',ph:'DL 1V 1234'},
+  {k:'fuelType',l:'Fuel',t:'sel',o:['CNG','Petrol']},
+  {k:'qty',l:'Qty (kg / litre)',t:'num'},{k:'rate',l:'Rate (\u20B9)',t:'num'},
+  {k:'amount',l:'Amount',t:'num',calc:function(r){return (r.qty*r.rate)||0;}},
+  {k:'km',l:'Odometer (km)',t:'num',opt:1},{k:'note',l:'Remarks',t:'text',opt:1}]},
+ repair:{title:'Van maintenance & repair',group:'work',gl:'Work type',fields:[
+  {k:'date',l:'Date',t:'date'},{k:'van',l:'Van no.',t:'text',ph:'DL 1V 1234'},
+  {k:'work',l:'Work type',t:'sel',o:['Regular service','Repair','Tyre / tube','Battery','Oil change','CNG kit / cylinder','Insurance / fitness / permit','Cleaning / washing','Other']},
+  {k:'shop',l:'Workshop / shop',t:'text',opt:1},{k:'km',l:'Odometer (km)',t:'num',opt:1},
+  {k:'amount',l:'Amount (\u20B9)',t:'num'},{k:'mode',l:'Mode',t:'sel',o:MODES},
+  {k:'note',l:'Details',t:'text',opt:1}]},
+ salary:{title:'Staff salary & advance',group:'type',gl:'Entry type',fields:[
+  {k:'date',l:'Date',t:'date'},{k:'staff',l:'Staff name',t:'text'},
+  {k:'month',l:'For month',t:'sel',o:MONTHS},
+  {k:'type',l:'Entry type',t:'sel',o:['Salary paid','Advance given','Advance recovered']},
+  {k:'amount',l:'Amount (\u20B9)',t:'num'},{k:'mode',l:'Mode',t:'sel',o:MODES},
+  {k:'note',l:'Remarks',t:'text',opt:1}]},
+ expense:{title:'School wages & expenses',group:'category',gl:'Category',fields:[
+  {k:'date',l:'Date',t:'date'},
+  {k:'category',l:'Category',t:'sel',o:['Wages (helper / driver)','Electricity','Water','Stationery','Repair & maintenance','Events','Rent','Other']},
+  {k:'paidTo',l:'Paid to',t:'text'},{k:'amount',l:'Amount (\u20B9)',t:'num'},
+  {k:'mode',l:'Mode',t:'sel',o:MODES},{k:'note',l:'Details',t:'text',opt:1}]},
+ fees:{title:'Children fees',group:'source',gl:'Fee source',fields:[
+  {k:'date',l:'Date',t:'date'},{k:'receipt',l:'Receipt no.',t:'text',opt:1},
+  {k:'child',l:'Child name',t:'text'},
+  {k:'source',l:'Fee from',t:'sel',o:['Session','School / day care']},
+  {k:'count',l:'No. of sessions (school month = 1)',t:'num',def:'1'},
+  {k:'rate',l:'Rate per session / month (\u20B9)',t:'num'},
+  {k:'amount',l:'Amount',t:'num',calc:function(r){return (r.count*r.rate)||0;}},
+  {k:'month',l:'For month',t:'sel',o:MONTHS},
+  {k:'mode',l:'Mode',t:'sel',o:MODES},{k:'note',l:'Remarks',t:'text',opt:1}]}
+};
+var SHEET_URL='https://script.google.com/macros/s/AKfycbyQrk1HLBIUHf5wRYOKCjfkNh-3XGnt7HQP3_VEIJ02EEo_a0gWpQEnzn6fnD2RPTTYag/exec';
+var toastTimer;
+function toast(m){var t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';t.setAttribute('role','status');document.body.appendChild(t);}
+  t.textContent=m;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.classList.remove('show');},3000);}
+function sendToSheet(k,r){
+  if(!SHEET_URL)return;
+  fetch(SHEET_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({module:k,row:r})})
+   .then(function(){toast('Saved here and sent to Google Sheet');})
+   .catch(function(){toast('Saved here, but could not reach Google Sheet');});
+}
+var tab='home',q='';
+
+function sum(a,f){return a.reduce(function(t,r){return t+(f?f(r):Number(r.amount)||0);},0);}
+function esc(v){return String(v==null?'':v).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function cashOut(r){return r.type==='Advance recovered'?0:Number(r.amount)||0;}
+
+function drawTabs(){
+  var h='<button role="tab" data-t="home" aria-selected="'+(tab==='home')+'">Summary</button>';
+  Object.keys(MOD).forEach(function(k){h+='<button role="tab" data-t="'+k+'" aria-selected="'+(tab===k)+'">'+MOD[k].title+'</button>';});
+  var n=document.getElementById('tabs');n.innerHTML=h;
+  n.onclick=function(e){var t=e.target.getAttribute('data-t');if(t){tab=t;q='';draw();}};
+}
+
+function home(){
+  var inc=sum(DB.fees),fu=sum(DB.fuel),sa=sum(DB.salary,cashOut),ex=sum(DB.expense),rp=sum(DB.repair),out=fu+rp+sa+ex,net=inc-out;
+  var h='<div class="stats">'+
+   '<div class="stat"><span>Fees collected</span><b>'+inr(inc)+'</b></div>'+
+   '<div class="stat"><span>Van fuel</span><b>'+inr(fu)+'</b></div>'+
+   '<div class="stat"><span>Van maintenance & repair</span><b>'+inr(rp)+'</b></div>'+
+   '<div class="stat"><span>Salary & advances paid</span><b>'+inr(sa)+'</b></div>'+
+   '<div class="stat"><span>Wages & expenses</span><b>'+inr(ex)+'</b></div>'+
+   '<div class="stat"><span>Balance</span><b class="'+(net<0?'neg':'')+'">'+inr(net)+'</b></div></div>';
+  h+='<div class="grid2">'+byGroup('Fees by source (sessions / school)',DB.fees,'source')+byGroup('Fuel by type',DB.fuel,'fuelType')+byGroup('Van repair by work type',DB.repair,'work')+
+     byGroup('Expenses by category',DB.expense,'category')+advBal()+'</div>';
+  h+='<p class="noprint"><button class="btn ghost" onclick="window.print()">Print summary</button></p>';
+  return h;
+}
+function byGroup(t,rows,k){
+  var m={};rows.forEach(function(r){m[r[k]]=(m[r[k]]||0)+(Number(r.amount)||0);});
+  var ks=Object.keys(m).sort();
+  var b=ks.length?ks.map(function(x){return '<tr><td>'+esc(x)+'</td><td class="n">'+inr(m[x])+'</td></tr>';}).join(''):'<tr><td class="empty" colspan="2">No entries yet.</td></tr>';
+  return '<div class="panel"><h2>'+t+'</h2><div class="wrap"><table style="min-width:0"><tbody>'+b+'</tbody></table></div></div>';
+}
+function advBal(){
+  var m={};
+  DB.salary.forEach(function(r){var n=r.staff;m[n]=m[n]||0;
+    if(r.type==='Advance given')m[n]+=+r.amount||0;if(r.type==='Advance recovered')m[n]-=+r.amount||0;});
+  var ks=Object.keys(m).filter(function(n){return m[n]!==0;}).sort();
+  var b=ks.length?ks.map(function(n){return '<tr><td>'+esc(n)+'</td><td class="n">'+inr(m[n])+'</td></tr>';}).join(''):'<tr><td class="empty" colspan="2">No advance pending.</td></tr>';
+  return '<div class="panel"><h2>Advance pending by staff</h2><div class="wrap"><table style="min-width:0"><tbody>'+b+'</tbody></table></div></div>';
+}
+
+function module(k){
+  var M=MOD[k],h='<div class="panel"><h2>Add entry \u2013 '+M.title+'</h2><form id="f">';
+  M.fields.forEach(function(f){
+    var ro=f.calc?' readonly tabindex="-1"':'',req=f.opt||f.calc?'':' required';
+    h+='<label>'+f.l;
+    if(f.t==='sel'){h+='<select name="'+f.k+'">'+f.o.map(function(o){return '<option'+(o===f.def?' selected':'')+'>'+o+'</option>';}).join('')+'</select>';}
+    else if(f.t==='num'){h+='<input name="'+f.k+'" type="number" step="any" min="0" inputmode="decimal"'+(f.def?' value="'+f.def+'"':'')+ro+req+'>';}
+    else{h+='<input name="'+f.k+'" type="'+f.t+'"'+(f.t==='date'?' value="'+today+'"':'')+(f.ph?' placeholder="'+f.ph+'"':'')+req+'>';}
+    h+='</label>';
+  });
+  h+='<button class="btn" type="submit">Save entry</button></form></div>';
+  var rows=DB[k].map(function(r,i){return {r:r,i:i};}).filter(function(o){return !q||JSON.stringify(o.r).toLowerCase().indexOf(q)>-1;});
+  rows.sort(function(a,b){return (b.r.date||'').localeCompare(a.r.date||'')||b.i-a.i;});
+  h+='<div class="panel"><h2>Register</h2><div class="tools"><input id="q" type="search" placeholder="Search entries" value="'+esc(q)+'" aria-label="Search entries"><button class="btn ghost" onclick="window.print()">Print</button></div><div class="wrap"><table><thead><tr>';
+  M.fields.forEach(function(f){h+='<th class="'+(f.t==='num'?'n':'')+'">'+f.l+'</th>';});
+  h+='<th></th></tr></thead><tbody>';
+  if(!rows.length)h+='<tr><td class="empty" colspan="'+(M.fields.length+1)+'">No entries yet. Fill the form above and save.</td></tr>';
+  rows.forEach(function(o){
+    h+='<tr>';M.fields.forEach(function(f){var v=o.r[f.k];
+      h+='<td class="'+(f.t==='num'?'n':'')+'">'+(f.k==='amount'?inr(v):esc(v))+'</td>';});
+    h+='<td><button class="x" data-d="'+o.i+'" aria-label="Delete entry" title="Delete">\u2715</button></td></tr>';
+  });
+  var tot=sum(rows.map(function(o){return o.r;}),k==='salary'?cashOut:null);
+  h+='</tbody><tfoot><tr><td colspan="'+M.fields.length+'">Total'+(k==='salary'?' (excluding recoveries)':'')+'</td><td class="n" colspan="1">'+inr(tot)+'</td></tr></tfoot></table></div></div>';
+  h+=byGroup('Total by '+M.gl.toLowerCase(),DB[k],M.group);
+  return h;
+}
+
+function bind(k){
+  var f=document.getElementById('f'),M=MOD[k];
+  function recalc(){M.fields.forEach(function(x){if(x.calc){var r={};M.fields.forEach(function(y){var e=f.elements[y.k];r[y.k]=y.t==='num'?parseFloat(e.value):e.value;});f.elements[x.k].value=x.calc(r)?+x.calc(r).toFixed(2):'';}});}
+  f.oninput=recalc;
+  f.onsubmit=function(e){e.preventDefault();var r={};
+    M.fields.forEach(function(x){var v=f.elements[x.k].value;r[x.k]=x.t==='num'?(parseFloat(v)||0):v;});
+    if(!(r.amount>0)){alert('Enter an amount greater than zero.');return;}
+    DB[k].push(r);save();sendToSheet(k,r);draw();};
+  var s=document.getElementById('q');
+  s.oninput=function(){q=s.value.toLowerCase();var p=s.selectionStart;draw();var n=document.getElementById('q');n.focus();n.setSelectionRange(p,p);};
+  document.getElementById('view').onclick=function(e){var d=e.target.getAttribute('data-d');
+    if(d!==null&&confirm('Delete this entry?')){DB[k].splice(+d,1);save();draw();}};
+}
+
+function draw(){
+  drawTabs();
+  var v=document.getElementById('view');
+  if(tab==='home'){v.innerHTML=home();v.onclick=null;}
+  else{v.innerHTML=module(tab);bind(tab);}
+}
+draw();
+</script>
+</body>
+</html>
