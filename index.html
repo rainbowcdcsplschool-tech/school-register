@@ -122,7 +122,10 @@ var MOD={
   {k:'month',l:'For month',t:'sel',o:MONTHS},
   {k:'mode',l:'Mode',t:'sel',o:MODES},{k:'note',l:'Remarks',t:'text',opt:1}]}
 };
-var SHEET_URL='https://script.google.com/macros/s/AKfycbyropkn8IKBlXHQXCaxrprCY6B0EhVPMpVO3lszzYm3Gss1d8oIsQdlXfh7Aynh5FHoWQ/exec';
+
+// Updated with your new Google Apps Script Web App URL
+var SHEET_URL='https://script.google.com/macros/s/AKfycbyOyR6a9EW1oom6XbVy-YKBavTL0jDRDY9GxwgMEyyRSy31QIf_HH0X2nGHBRBWGcJ1aA/exec';
+
 var toastTimer;
 function toast(m){var t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';t.setAttribute('role','status');document.body.appendChild(t);}
   t.textContent=m;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.classList.remove('show');},3000);}
@@ -211,7 +214,7 @@ function home(){
 function byGroup(t,rows,k){
   var m={};rows.forEach(function(r){m[r[k]]=(m[r[k]]||0)+(Number(r.amount)||0);});
   var ks=Object.keys(m).sort();
-  var b=ks.length?ks.map(function(x){return '<tr><td>'+esc(x)+'</td><td class="n">'+inr(m[x])+'</td></tr>';}).join(''):'<tr><td class="empty" colspan="2">No entries yet.</td></tr>';
+  var b=ks.length?ks.map(function(x){return '<tr><td>'+esc(x)+'</td><td class="n">'+inr(m[x])+'</td></tr>;}).join(''):'<tr><td class="empty" colspan="2">No entries yet.</td></tr>';
   return '<div class="panel"><h2>'+t+'</h2><div class="wrap"><table style="min-width:0"><tbody>'+b+'</tbody></table></div></div>';
 }
 function advBal(){
