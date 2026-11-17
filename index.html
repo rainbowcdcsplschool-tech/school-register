@@ -65,12 +65,18 @@ tfoot td{font-weight:700;background:var(--hi)}
 .sheet .ty{text-align:center;margin-top:40px;color:#444;font-size:12.5px}
 @page{size:A4;margin:0}
 @media print{body.billing>*:not(#billView){display:none!important}body.billing{background:#fff}#billView{position:static;background:none;padding:0;overflow:visible}.bar{display:none}.sheet{width:210mm;min-height:297mm}}
+.hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
 </style>
 </head>
 <body>
 <header>
-  <h1>School account register</h1>
-  <p>Van fuel, staff pay, expenses and student fees in one place. Entries are saved in this browser and sent to your Google Sheet.</p>
+  <div class="hd">
+    <div>
+      <h1>School account register</h1>
+      <p>Van fuel, staff pay, expenses and student fees in one place. Entries are saved in this browser and sent to your Google Sheet.</p>
+    </div>
+    <button id="syncBtn" class="btn noprint" onclick="syncNow()">&#8635; Sync</button>
+  </div>
 </header>
 <nav id="tabs" role="tablist"></nav>
 <main id="view"></main>
@@ -90,13 +96,11 @@ var MOD={
  fuel:{title:'Van fuel',group:'fuelType',gl:'Fuel type',fields:[
   {k:'date',l:'Date',t:'date'},{k:'van',l:'Van no.',t:'text',ph:'DL 1V 1234'},
   {k:'fuelType',l:'Fuel',t:'sel',o:['CNG','Petrol']},
-  {k:'qty',l:'Qty (kg / litre)',t:'num'},{k:'rate',l:'Rate (\u20B9)',t:'num'},
-  {k:'amount',l:'Amount',t:'num',calc:function(r){return (r.qty*r.rate)||0;}},
-  {k:'km',l:'Odometer (km)',t:'num',opt:1},{k:'note',l:'Remarks',t:'text',opt:1}]},
+  {k:'amount',l:'Amount (\u20B9)',t:'num'},{k:'note',l:'Remarks',t:'text',opt:1}]},
  repair:{title:'Van maintenance & repair',group:'work',gl:'Work type',fields:[
   {k:'date',l:'Date',t:'date'},{k:'van',l:'Van no.',t:'text',ph:'DL 1V 1234'},
   {k:'work',l:'Work type',t:'sel',o:['Regular service','Repair','Tyre / tube','Battery','Oil change','CNG kit / cylinder','Insurance / fitness / permit','Cleaning / washing','Other']},
-  {k:'shop',l:'Workshop / shop',t:'text',opt:1},{k:'km',l:'Odometer (km)',t:'num',opt:1},
+  {k:'shop',l:'Workshop / shop',t:'text',opt:1},
   {k:'amount',l:'Amount (\u20B9)',t:'num'},{k:'mode',l:'Mode',t:'sel',o:MODES},
   {k:'note',l:'Details',t:'text',opt:1}]},
  salary:{title:'Staff salary & advance',group:'type',gl:'Entry type',fields:[
@@ -114,21 +118,39 @@ var MOD={
   {k:'date',l:'Date',t:'date'},{k:'receipt',l:'Receipt no.',t:'text',opt:1},
   {k:'child',l:'Child name',t:'text'},
   {k:'source',l:'Fee from',t:'sel',o:['Session','School / day care']},
-  {k:'count',l:'No. of sessions (school month = 1)',t:'num',def:'1'},
-  {k:'rate',l:'Rate per session / month (\u20B9)',t:'num'},
-  {k:'amount',l:'Amount',t:'num',calc:function(r){return (r.count*r.rate)||0;}},
+  {k:'amount',l:'Amount (\u20B9)',t:'num'},
   {k:'month',l:'For month',t:'sel',o:MONTHS},
   {k:'mode',l:'Mode',t:'sel',o:MODES},{k:'note',l:'Remarks',t:'text',opt:1}]}
 };
-var SHEET_URL='https://script.google.com/macros/s/AKfycbxztBYPS-SB3G3NVSBjPbRjeSQYGLnLKSq21Q_4BhZH/dev';
+var SHEET_URL='https://script.google.com/macros/s/AKfycbyQrk1HLBIUHf5wRYOKCjfkNh-3XGnt7HQP3_VEIJ02EEo_a0gWpQEnzn6fnD2RPTTYag/exec';
 var toastTimer;
 function toast(m){var t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';t.setAttribute('role','status');document.body.appendChild(t);}
   t.textContent=m;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.classList.remove('show');},3000);}
+function clean(r){var o={};Object.keys(r).forEach(function(x){if(x.charAt(0)!=='_')o[x]=r[x];});return o;}
+function post(p){return fetch(SHEET_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(p)});}
 function sendToSheet(k,r){
   if(!SHEET_URL)return;
-  fetch(SHEET_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({module:k,row:r})})
-   .then(function(){toast('Saved here and sent to Google Sheet');})
-   .catch(function(){toast('Saved here, but could not reach Google Sheet');});
+  post({module:k,row:clean(r)})
+   .then(function(){delete r._u;save();toast('Saved here and sent to Google Sheet');})
+   .catch(function(){r._u=1;save();toast('Saved here, not sent yet. Press Sync when online.');});
+}
+var syncing=false;
+function syncNow(){
+  if(!SHEET_URL||syncing)return;
+  if(!confirm('Sync will upload any unsent entries, then replace the list on this device with the data in your Google Sheet. Continue?'))return;
+  syncing=true;var b=document.getElementById('syncBtn');b.disabled=true;b.textContent='Syncing\u2026';
+  var chain=Promise.resolve();
+  Object.keys(MOD).forEach(function(k){DB[k].forEach(function(r){
+    if(r._u)chain=chain.then(function(){return post({module:k,row:clean(r)}).then(function(){delete r._u;});});});});
+  chain.then(function(){save();return fetch(SHEET_URL+'?action=read');})
+   .then(function(res){return res.json();})
+   .then(function(j){
+     if(!j.ok)throw new Error(j.error||'Read failed');
+     Object.keys(MOD).forEach(function(k){
+       if(j.data[k])DB[k]=j.data[k].concat(DB[k].filter(function(r){return r._u;}));});
+     save();toast('Synced with Google Sheet');draw();})
+   .catch(function(){toast('Sync failed. Check internet and the web app link.');})
+   .then(function(){syncing=false;b.disabled=false;b.textContent='\u21BB Sync';});
 }
 var CENTER={name:'Rainbow Child Development Center',addr:'1st Floor, A Block, Govt. Hospital, H No. 10, Gali Number 1, Opp. Burari Road, Saroop Vihar, Kaushik Enclave, Indraprasth Colony, Burari, Delhi, 110084',mobile:'076783 12089'};
 var ONES=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'],TENS=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
@@ -147,9 +169,9 @@ function showBill(i){
   '<h3>FEE RECEIPT</h3>'+
   '<div class="meta"><div><b>Receipt no.:</b> '+esc(no)+'</div><div><b>Date:</b> '+fmtD(r.date)+'</div></div>'+
   '<div class="meta"><div><b>Child name:</b> '+esc(r.child)+'</div><div><b>Fee from:</b> '+esc(r.source)+'</div></div>'+
-  '<table><thead><tr><th>#</th><th>Description</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">Amount</th></tr></thead>'+
-  '<tbody><tr><td>1</td><td>'+esc(what)+'</td><td class="n">'+esc(r.count)+'</td><td class="n">'+inr(r.rate)+'</td><td class="n">'+inr(amt)+'</td></tr></tbody>'+
-  '<tfoot><tr><td colspan="4" class="n">Total</td><td class="n">'+inr(amt)+'</td></tr></tfoot></table>'+
+  '<table><thead><tr><th>#</th><th>Description</th><th class="n">Amount</th></tr></thead>'+
+  '<tbody><tr><td>1</td><td>'+esc(what)+'</td><td class="n">'+inr(amt)+'</td></tr></tbody>'+
+  '<tfoot><tr><td colspan="2" class="n">Total</td><td class="n">'+inr(amt)+'</td></tr></tfoot></table>'+
   '<p><b>Amount in words:</b> Rupees '+words(amt)+' only</p>'+
   '<p><b>Payment mode:</b> '+esc(r.mode)+(r.note?' &nbsp;|&nbsp; <b>Remarks:</b> '+esc(r.note):'')+'</p>'+
   '<div class="sign"><div>Parent / Guardian signature</div><div>Authorised signature</div></div>'+
@@ -236,11 +258,11 @@ function bind(k){
   f.onsubmit=function(e){e.preventDefault();var r={};
     M.fields.forEach(function(x){var v=f.elements[x.k].value;r[x.k]=x.t==='num'?(parseFloat(v)||0):v;});
     if(!(r.amount>0)){alert('Enter an amount greater than zero.');return;}
-    DB[k].push(r);save();sendToSheet(k,r);draw();};
+    r._u=1;DB[k].push(r);save();sendToSheet(k,r);draw();};
   var s=document.getElementById('q');
   s.oninput=function(){q=s.value.toLowerCase();var p=s.selectionStart;draw();var n=document.getElementById('q');n.focus();n.setSelectionRange(p,p);};
   document.getElementById('view').onclick=function(e){var b=e.target.getAttribute('data-b');if(b!==null){showBill(+b);return;}var d=e.target.getAttribute('data-d');
-    if(d!==null&&confirm('Delete this entry?')){DB[k].splice(+d,1);save();draw();}};
+    if(d!==null&&confirm('Delete this entry?')){var gone=DB[k].splice(+d,1)[0];save();if(!gone._u&&SHEET_URL)post({action:'delete',module:k,row:clean(gone)}).catch(function(){});draw();}};
 }
 
 function draw(){
