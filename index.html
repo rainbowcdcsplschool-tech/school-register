@@ -47,6 +47,24 @@ tfoot td{font-weight:700;background:var(--hi)}
 @media print{nav,form,.tools,.x,.noprint{display:none!important}body{background:#fff;color:#000}}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:.9rem;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.show{opacity:1}
+#billView{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);overflow:auto;padding:14px;z-index:50}
+.bar{max-width:210mm;margin:0 auto 10px;display:flex;gap:8px}
+.sheet{background:#fff;color:#111;width:210mm;max-width:100%;min-height:297mm;margin:0 auto;padding:0 14mm 14mm;font-size:14px;line-height:1.5}
+.sheet .rb{height:8px;margin:0 -14mm;background:linear-gradient(90deg,#e53935,#fb8c00,#fdd835,#43a047,#1e88e5,#8e24aa)}
+.sheet .bh{text-align:center;padding:14px 0 10px;border-bottom:2px solid #0b6e6e}
+.sheet .bh h2{margin:0 0 4px;font-size:26px;color:#0b6e6e}
+.sheet .bh p{margin:2px 0;font-size:12.5px}
+.sheet h3{text-align:center;letter-spacing:3px;margin:16px 0 12px;font-size:17px}
+.sheet .meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.sheet table{min-width:0;margin:14px 0}
+.sheet th,.sheet td{color:#111;border:1px solid #9aa7ae;padding:8px 10px;white-space:normal}
+.sheet th{background:#eaf1f2;color:#111}
+.sheet tfoot td{background:#e7f3f2;color:#111;font-size:15px}
+.sheet .sign{display:flex;justify-content:space-between;margin-top:90px;font-size:13px}
+.sheet .sign div{border-top:1px solid #111;padding-top:4px;min-width:200px;text-align:center}
+.sheet .ty{text-align:center;margin-top:40px;color:#444;font-size:12.5px}
+@page{size:A4;margin:0}
+@media print{body.billing>*:not(#billView){display:none!important}body.billing{background:#fff}#billView{position:static;background:none;padding:0;overflow:visible}.bar{display:none}.sheet{width:210mm;min-height:297mm}}
 </style>
 </head>
 <body>
@@ -112,6 +130,35 @@ function sendToSheet(k,r){
    .then(function(){toast('Saved here and sent to Google Sheet');})
    .catch(function(){toast('Saved here, but could not reach Google Sheet');});
 }
+var CENTER={name:'Rainbow Child Development Center',addr:'1st Floor, A Block, Govt. Hospital, H No. 10, Gali Number 1, Opp. Burari Road, Saroop Vihar, Kaushik Enclave, Indraprasth Colony, Burari, Delhi, 110084',mobile:'076783 12089'};
+var ONES=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'],TENS=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+function two(n){return n<20?ONES[n]:TENS[Math.floor(n/10)]+(n%10?' '+ONES[n%10]:'');}
+function three(n){return (n>=100?ONES[Math.floor(n/100)]+' Hundred'+(n%100?' ':''):'')+(n%100?two(n%100):'');}
+function words(n){n=Math.round(n);if(!n)return 'Zero';var s='',c=Math.floor(n/10000000),l=Math.floor(n/100000)%100,t=Math.floor(n/1000)%100,x=n%1000;
+  if(c)s+=three(c)+' Crore ';if(l)s+=two(l)+' Lakh ';if(t)s+=two(t)+' Thousand ';if(x)s+=three(x);return s.trim();}
+function fmtD(d){var p=String(d||'').split('-');return p.length===3?p[2]+'-'+p[1]+'-'+p[0]:esc(d);}
+function showBill(i){
+  var r=DB.fees[i];if(!r)return;
+  var no=r.receipt||('R-'+String(i+1).padStart(4,'0'));
+  var what=(r.source==='Session'?'Session fee':'School / day care fee')+(r.month?' \u2013 '+r.month:'');
+  var amt=Number(r.amount)||0;
+  var h='<div class="bar"><button class="btn" onclick="window.print()">Print / Save as PDF</button><button class="btn ghost" style="background:#fff;color:#111" onclick="closeBill()">Close</button></div>'+
+  '<div class="sheet"><div class="rb"></div><div class="bh"><h2>'+esc(CENTER.name)+'</h2><p>'+esc(CENTER.addr)+'</p><p><b>Mobile:</b> '+esc(CENTER.mobile)+'</p></div>'+
+  '<h3>FEE RECEIPT</h3>'+
+  '<div class="meta"><div><b>Receipt no.:</b> '+esc(no)+'</div><div><b>Date:</b> '+fmtD(r.date)+'</div></div>'+
+  '<div class="meta"><div><b>Child name:</b> '+esc(r.child)+'</div><div><b>Fee from:</b> '+esc(r.source)+'</div></div>'+
+  '<table><thead><tr><th>#</th><th>Description</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">Amount</th></tr></thead>'+
+  '<tbody><tr><td>1</td><td>'+esc(what)+'</td><td class="n">'+esc(r.count)+'</td><td class="n">'+inr(r.rate)+'</td><td class="n">'+inr(amt)+'</td></tr></tbody>'+
+  '<tfoot><tr><td colspan="4" class="n">Total</td><td class="n">'+inr(amt)+'</td></tr></tfoot></table>'+
+  '<p><b>Amount in words:</b> Rupees '+words(amt)+' only</p>'+
+  '<p><b>Payment mode:</b> '+esc(r.mode)+(r.note?' &nbsp;|&nbsp; <b>Remarks:</b> '+esc(r.note):'')+'</p>'+
+  '<div class="sign"><div>Parent / Guardian signature</div><div>Authorised signature</div></div>'+
+  '<p class="ty">Thank you.</p></div>';
+  var v=document.getElementById('billView');
+  if(!v){v=document.createElement('div');v.id='billView';document.body.appendChild(v);}
+  v.innerHTML=h;v.style.display='block';document.body.classList.add('billing');
+}
+function closeBill(){var v=document.getElementById('billView');if(v)v.style.display='none';document.body.classList.remove('billing');}
 var tab='home',q='';
 
 function sum(a,f){return a.reduce(function(t,r){return t+(f?f(r):Number(r.amount)||0);},0);}
@@ -174,7 +221,7 @@ function module(k){
   rows.forEach(function(o){
     h+='<tr>';M.fields.forEach(function(f){var v=o.r[f.k];
       h+='<td class="'+(f.t==='num'?'n':'')+'">'+(f.k==='amount'?inr(v):esc(v))+'</td>';});
-    h+='<td><button class="x" data-d="'+o.i+'" aria-label="Delete entry" title="Delete">\u2715</button></td></tr>';
+    h+='<td>'+(k==='fees'?'<span class="noprint"><button class="btn ghost" data-b="'+o.i+'" style="padding:3px 9px;margin-right:6px">Bill</button></span>':'')+'<button class="x" data-d="'+o.i+'" aria-label="Delete entry" title="Delete">\u2715</button></td></tr>';
   });
   var tot=sum(rows.map(function(o){return o.r;}),k==='salary'?cashOut:null);
   h+='</tbody><tfoot><tr><td colspan="'+M.fields.length+'">Total'+(k==='salary'?' (excluding recoveries)':'')+'</td><td class="n" colspan="1">'+inr(tot)+'</td></tr></tfoot></table></div></div>';
@@ -192,7 +239,7 @@ function bind(k){
     DB[k].push(r);save();sendToSheet(k,r);draw();};
   var s=document.getElementById('q');
   s.oninput=function(){q=s.value.toLowerCase();var p=s.selectionStart;draw();var n=document.getElementById('q');n.focus();n.setSelectionRange(p,p);};
-  document.getElementById('view').onclick=function(e){var d=e.target.getAttribute('data-d');
+  document.getElementById('view').onclick=function(e){var b=e.target.getAttribute('data-b');if(b!==null){showBill(+b);return;}var d=e.target.getAttribute('data-d');
     if(d!==null&&confirm('Delete this entry?')){DB[k].splice(+d,1);save();draw();}};
 }
 
