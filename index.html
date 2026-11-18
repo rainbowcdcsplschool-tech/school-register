@@ -20,6 +20,9 @@ nav button{flex:none;border:1px solid var(--line);background:var(--card);color:v
 nav button[aria-selected="true"]{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font-weight:600}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 main{max-width:1100px;margin:auto;padding:6px 16px 40px}
+.filter-bar{max-width:1100px;margin:0 auto 10px;padding:0 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.filter-bar label{flex-direction:row;align-items:center;gap:8px;font-size:.9rem;font-weight:600;color:var(--ink)}
+.filter-bar select{width:auto;min-width:180px;background:var(--card)}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
 .panel h2{margin:0 0 12px;font-size:1.05rem}
 form{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}
@@ -28,6 +31,7 @@ input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid
 input[readonly]{background:var(--hi);font-weight:600}
 .btn{border:0;background:var(--acc);color:var(--acc-ink);font:inherit;font-weight:600;padding:10px 14px;border-radius:6px;cursor:pointer}
 .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:400}
+.btn:disabled{opacity:.6;cursor:not-allowed}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:16px}
 .stat{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--acc);border-radius:8px;padding:10px 12px}
 .stat span{display:block;color:var(--mute);font-size:.8rem}
@@ -44,8 +48,8 @@ tfoot td{font-weight:700;background:var(--hi)}
 .tools input{max-width:240px}
 .empty{color:var(--mute);padding:14px 0}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
-@media print{nav,form,.tools,.x,.noprint{display:none!important}body{background:#fff;color:#000}}
-.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:.9rem;opacity:0;pointer-events:none;transition:opacity .2s}
+@media print{nav,form,.tools,.x,.noprint,.filter-bar{display:none!important}body{background:#fff;color:#000}}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:.9rem;opacity:0;pointer-events:none;transition:opacity .2s;z-index:100}
 .toast.show{opacity:1}
 #billView{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);overflow:auto;padding:14px;z-index:50}
 .bar{max-width:210mm;margin:0 auto 10px;display:flex;gap:8px}
@@ -66,6 +70,7 @@ tfoot td{font-weight:700;background:var(--hi)}
 @page{size:A4;margin:0}
 @media print{body.billing>*:not(#billView){display:none!important}body.billing{background:#fff}#billView{position:static;background:none;padding:0;overflow:visible}.bar{display:none}.sheet{width:210mm;min-height:297mm}}
 .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.hd-actions{display:flex;gap:8px;flex-wrap:wrap}
 </style>
 </head>
 <body>
@@ -75,10 +80,14 @@ tfoot td{font-weight:700;background:var(--hi)}
       <h1>School account register</h1>
       <p>Van fuel, staff pay, expenses and student fees in one place. Entries are saved in this browser and sent to your Google Sheet.</p>
     </div>
-    <button id="syncBtn" class="btn noprint" onclick="syncNow()">&#8635; Sync</button>
+    <div class="hd-actions noprint">
+      <button id="uploadAllBtn" class="btn ghost" onclick="uploadAllLocal()">&#8593; Upload All Local Data</button>
+      <button id="syncBtn" class="btn" onclick="syncNow()">&#8635; Sync</button>
+    </div>
   </div>
 </header>
 <nav id="tabs" role="tablist"></nav>
+<div id="monthBar" class="filter-bar noprint"></div>
 <main id="view"></main>
 
 <script>
@@ -89,14 +98,18 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify(DB));}catch(e){}}
 var today=new Date().toISOString().slice(0,10);
 var SESS=['2025-26','2026-27','2027-28'];
 var MONTHS=['April','May','June','July','August','September','October','November','December','January','February','March'];
+var MONTH_NAMES=['January','February','March','April','May','June','July','August','September','October','November','December'];
 var MODES=['Cash','UPI','Bank','Cheque'];
 var inr=function(n){return '\u20B9'+(Number(n)||0).toLocaleString('en-IN',{maximumFractionDigits:2});};
 
 var MOD={
  fuel:{title:'Van fuel',group:'fuelType',gl:'Fuel type',fields:[
-  {k:'date',l:'Date',t:'date'},{k:'van',l:'Van no.',t:'text',ph:'DL 1V 1234'},
+  {k:'date',l:'Date',t:'date'},
+  {k:'van',l:'Van no.',t:'text',ph:'DL 1V 1234'},
   {k:'fuelType',l:'Fuel',t:'sel',o:['CNG','Petrol']},
-  {k:'amount',l:'Amount (\u20B9)',t:'num'},{k:'note',l:'Remarks',t:'text',opt:1}]},
+  {k:'amount',l:'Amount (\u20B9)',t:'num'},
+  {k:'mode',l:'Mode',t:'sel',o:MODES},
+  {k:'note',l:'Remarks',t:'text',opt:1}]},
  repair:{title:'Van maintenance & repair',group:'work',gl:'Work type',fields:[
   {k:'date',l:'Date',t:'date'},{k:'van',l:'Van no.',t:'text',ph:'DL 1V 1234'},
   {k:'work',l:'Work type',t:'sel',o:['Regular service','Repair','Tyre / tube','Battery','Oil change','CNG kit / cylinder','Insurance / fitness / permit','Cleaning / washing','Other']},
@@ -123,12 +136,11 @@ var MOD={
   {k:'mode',l:'Mode',t:'sel',o:MODES},{k:'note',l:'Remarks',t:'text',opt:1}]}
 };
 
-// Updated with your new Google Apps Script Web App URL
-var SHEET_URL='https://rainbowcdcsplschool-tech.github.io/school-register/https://rainbowcdcsplschool-tech.github.io/school-register/';
+var SHEET_URL='https://script.google.com/macros/s/AKfycbxxhVdh2OFa2y_BPYdAABdJISOhm3ngsUefccuslOFDb7Bd8wB0NJjR1TVTGWPQvrZecQ/exec';
 
 var toastTimer;
 function toast(m){var t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';t.setAttribute('role','status');document.body.appendChild(t);}
-  t.textContent=m;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.classList.remove('show');},3000);}
+  t.textContent=m;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.classList.remove('show');},3500);}
 function clean(r){var o={};Object.keys(r).forEach(function(x){if(x.charAt(0)!=='_')o[x]=r[x];});return o;}
 function post(p){return fetch(SHEET_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(p)});}
 function sendToSheet(k,r){
@@ -137,24 +149,72 @@ function sendToSheet(k,r){
    .then(function(){delete r._u;save();toast('Saved here and sent to Google Sheet');})
    .catch(function(){r._u=1;save();toast('Saved here, not sent yet. Press Sync when online.');});
 }
+
 var syncing=false;
+
+function uploadAllLocal(){
+  if(!SHEET_URL||syncing)return;
+  var total=0;
+  Object.keys(MOD).forEach(function(k){total+=DB[k].length;});
+  if(!total){toast('No local entries found to upload.');return;}
+  if(!confirm('This will upload all '+total+' entries currently saved in this browser to your Google Sheet. Only click this once to avoid duplicate rows. Continue?'))return;
+  
+  syncing=true;
+  var ub=document.getElementById('uploadAllBtn');
+  var sb=document.getElementById('syncBtn');
+  ub.disabled=true;sb.disabled=true;
+  
+  var sent=0;
+  var chain=Promise.resolve();
+  Object.keys(MOD).forEach(function(k){
+    DB[k].forEach(function(r){
+      chain=chain.then(function(){
+        sent++;
+        ub.textContent='Uploading '+sent+'/'+total+'\u2026';
+        return post({module:k,row:clean(r)}).then(function(){
+          delete r._u;
+        });
+      });
+    });
+  });
+  
+  chain.then(function(){
+    save();
+    toast('Uploaded all '+total+' entries to Google Sheet!');
+  })
+  .catch(function(){
+    toast('Upload interrupted. Check your internet connection and try again.');
+  })
+  .then(function(){
+    syncing=false;
+    ub.disabled=false;sb.disabled=false;
+    ub.textContent='\u2191 Upload All Local Data';
+  });
+}
+
 function syncNow(){
   if(!SHEET_URL||syncing)return;
   if(!confirm('Sync will upload any unsent entries, then replace the list on this device with the data in your Google Sheet. Continue?'))return;
-  syncing=true;var b=document.getElementById('syncBtn');b.disabled=true;b.textContent='Syncing\u2026';
+  syncing=true;
+  var b=document.getElementById('syncBtn');
+  var ub=document.getElementById('uploadAllBtn');
+  b.disabled=true;ub.disabled=true;b.textContent='Syncing\u2026';
   var chain=Promise.resolve();
   Object.keys(MOD).forEach(function(k){DB[k].forEach(function(r){
     if(r._u)chain=chain.then(function(){return post({module:k,row:clean(r)}).then(function(){delete r._u;});});});});
   chain.then(function(){save();return fetch(SHEET_URL+'?action=read');})
-   .then(function(res){return res.json();})
-   .then(function(j){
+   .then(function(res){return res.text();})
+   .then(function(txt){
+     var j;
+     try{j=JSON.parse(txt);}catch(e){throw new Error('Access blocked. Check "Who has access: Anyone" in Apps Script.');}
      if(!j.ok)throw new Error(j.error||'Read failed');
      Object.keys(MOD).forEach(function(k){
        if(j.data[k])DB[k]=j.data[k].concat(DB[k].filter(function(r){return r._u;}));});
      save();toast('Synced with Google Sheet');draw();})
-   .catch(function(){toast('Sync failed. Check internet and the web app link.');})
-   .then(function(){syncing=false;b.disabled=false;b.textContent='\u21BB Sync';});
+   .catch(function(err){toast(err.message||'Sync failed. Check internet and web app link.');})
+   .then(function(){syncing=false;b.disabled=false;ub.disabled=false;b.textContent='\u21BB Sync';});
 }
+
 var CENTER={name:'Rainbow Child Development Center',addr:'1st Floor, A Block, Govt. Hospital, H No. 10, Gali Number 1, Opp. Burari Road, Saroop Vihar, Kaushik Enclave, Indraprasth Colony, Burari, Delhi, 110084',mobile:'076783 12089'};
 var ONES=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'],TENS=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
 function two(n){return n<20?ONES[n]:TENS[Math.floor(n/10)]+(n%10?' '+ONES[n%10]:'');}
@@ -184,7 +244,40 @@ function showBill(i){
   v.innerHTML=h;v.style.display='block';document.body.classList.add('billing');
 }
 function closeBill(){var v=document.getElementById('billView');if(v)v.style.display='none';document.body.classList.remove('billing');}
-var tab='home',q='';
+var tab='home',q='',selMonth='ALL';
+
+function ymKey(d){var s=String(d||'');return s.length>=7?s.slice(0,7):'Unknown';}
+function ymLabel(ym){
+  if(ym==='ALL')return 'All Months';
+  var p=ym.split('-');
+  if(p.length===2){var m=parseInt(p[1],10);if(m>=1&&m<=12)return MONTH_NAMES[m-1]+' '+p[0];}
+  return ym;
+}
+function getAvailableMonths(){
+  var set={};
+  Object.keys(MOD).forEach(function(k){
+    DB[k].forEach(function(r){var ym=ymKey(r.date);if(ym!=='Unknown')set[ym]=1;});
+  });
+  return Object.keys(set).sort().reverse();
+}
+function filterByMonth(rows){
+  if(selMonth==='ALL')return rows;
+  return rows.filter(function(r){return ymKey(r.date)===selMonth;});
+}
+
+function drawMonthBar(){
+  var months=getAvailableMonths();
+  if(selMonth!=='ALL'&&months.indexOf(selMonth)===-1)selMonth='ALL';
+  var h='<label>Month Filter: <select id="mFilter"><option value="ALL"'+(selMonth==='ALL'?' selected':'')+'>All Months</option>';
+  months.forEach(function(ym){
+    h+='<option value="'+ym+'"'+(selMonth===ym?' selected':'')+'>'+esc(ymLabel(ym))+'</option>';
+  });
+  h+='</select></label>';
+  if(selMonth!=='ALL')h+='<button class="btn ghost" style="padding:6px 10px" onclick="selMonth=\'ALL\';draw()">Show All</button>';
+  var bar=document.getElementById('monthBar');
+  bar.innerHTML=h;
+  document.getElementById('mFilter').onchange=function(e){selMonth=e.target.value;draw();};
+}
 
 function sum(a,f){return a.reduce(function(t,r){return t+(f?f(r):Number(r.amount)||0);},0);}
 function esc(v){return String(v==null?'':v).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -197,24 +290,50 @@ function drawTabs(){
   n.onclick=function(e){var t=e.target.getAttribute('data-t');if(t){tab=t;q='';draw();}};
 }
 
+function monthWiseSummaryTable(){
+  var map={};
+  function add(ym,field,val){if(!map[ym])map[ym]={inc:0,fu:0,rp:0,sa:0,ex:0};map[ym][field]+=val;}
+  DB.fees.forEach(function(r){add(ymKey(r.date),'inc',Number(r.amount)||0);});
+  DB.fuel.forEach(function(r){add(ymKey(r.date),'fu',Number(r.amount)||0);});
+  DB.repair.forEach(function(r){add(ymKey(r.date),'rp',Number(r.amount)||0);});
+  DB.salary.forEach(function(r){add(ymKey(r.date),'sa',cashOut(r));});
+  DB.expense.forEach(function(r){add(ymKey(r.date),'ex',Number(r.amount)||0);});
+  var yms=Object.keys(map).sort().reverse();
+  if(!yms.length)return '<div class="panel"><h2>Month-wise Summary</h2><div class="empty">No entries yet.</div></div>';
+  var tInc=0,tFu=0,tRp=0,tSa=0,tEx=0,tOut=0;
+  var rowsHtml=yms.map(function(ym){
+    var d=map[ym],out=d.fu+d.rp+d.sa+d.ex,net=d.inc-out;
+    tInc+=d.inc;tFu+=d.fu;tRp+=d.rp;tSa+=d.sa;tEx+=d.ex;tOut+=out;
+    return '<tr><td><b>'+esc(ymLabel(ym))+'</b></td><td class="n">'+inr(d.inc)+'</td><td class="n">'+inr(d.fu)+'</td><td class="n">'+inr(d.rp)+'</td><td class="n">'+inr(d.sa)+'</td><td class="n">'+inr(d.ex)+'</td><td class="n">'+inr(out)+'</td><td class="n '+(net<0?'neg':'')+'"><b>'+inr(net)+'</b></td></tr>';
+  }).join('');
+  var tNet=tInc-tOut;
+  return '<div class="panel"><h2>Month-wise Summary</h2><div class="wrap"><table><thead><tr>'+
+    '<th>Month</th><th class="n">Fees</th><th class="n">Fuel</th><th class="n">Repair</th><th class="n">Salary</th><th class="n">Expenses</th><th class="n">Total Out</th><th class="n">Balance</th>'+
+    '</tr></thead><tbody>'+rowsHtml+'</tbody><tfoot><tr>'+
+    '<td>Grand Total</td><td class="n">'+inr(tInc)+'</td><td class="n">'+inr(tFu)+'</td><td class="n">'+inr(tRp)+'</td><td class="n">'+inr(tSa)+'</td><td class="n">'+inr(tEx)+'</td><td class="n">'+inr(tOut)+'</td><td class="n '+(tNet<0?'neg':'')+'">'+inr(tNet)+'</td>'+
+    '</tr></tfoot></table></div></div>';
+}
+
 function home(){
-  var inc=sum(DB.fees),fu=sum(DB.fuel),sa=sum(DB.salary,cashOut),ex=sum(DB.expense),rp=sum(DB.repair),out=fu+rp+sa+ex,net=inc-out;
+  var fFees=filterByMonth(DB.fees),fFuel=filterByMonth(DB.fuel),fSal=filterByMonth(DB.salary),fExp=filterByMonth(DB.expense),fRep=filterByMonth(DB.repair);
+  var inc=sum(fFees),fu=sum(fFuel),sa=sum(fSal,cashOut),ex=sum(fExp),rp=sum(fRep),out=fu+rp+sa+ex,net=inc-out;
   var h='<div class="stats">'+
-   '<div class="stat"><span>Fees collected</span><b>'+inr(inc)+'</b></div>'+
+   '<div class="stat"><span>Fees collected ('+esc(ymLabel(selMonth))+')</span><b>'+inr(inc)+'</b></div>'+
    '<div class="stat"><span>Van fuel</span><b>'+inr(fu)+'</b></div>'+
    '<div class="stat"><span>Van maintenance & repair</span><b>'+inr(rp)+'</b></div>'+
    '<div class="stat"><span>Salary & advances paid</span><b>'+inr(sa)+'</b></div>'+
    '<div class="stat"><span>Wages & expenses</span><b>'+inr(ex)+'</b></div>'+
    '<div class="stat"><span>Balance</span><b class="'+(net<0?'neg':'')+'">'+inr(net)+'</b></div></div>';
-  h+='<div class="grid2">'+byGroup('Fees by source (sessions / school)',DB.fees,'source')+byGroup('Fuel by type',DB.fuel,'fuelType')+byGroup('Van repair by work type',DB.repair,'work')+
-     byGroup('Expenses by category',DB.expense,'category')+advBal()+'</div>';
+  h+=monthWiseSummaryTable();
+  h+='<div class="grid2">'+byGroup('Fees by source ('+esc(ymLabel(selMonth))+')',fFees,'source')+byGroup('Fuel by type',fFuel,'fuelType')+byGroup('Van repair by work type',fRep,'work')+
+     byGroup('Expenses by category',fExp,'category')+advBal()+'</div>';
   h+='<p class="noprint"><button class="btn ghost" onclick="window.print()">Print summary</button></p>';
   return h;
 }
 function byGroup(t,rows,k){
   var m={};rows.forEach(function(r){m[r[k]]=(m[r[k]]||0)+(Number(r.amount)||0);});
   var ks=Object.keys(m).sort();
-  var b=ks.length?ks.map(function(x){return '<tr><td>'+esc(x)+'</td><td class="n">'+inr(m[x])+'</td></tr>;}).join(''):'<tr><td class="empty" colspan="2">No entries yet.</td></tr>';
+  var b=ks.length?ks.map(function(x){return '<tr><td>'+esc(x)+'</td><td class="n">'+inr(m[x])+'</td></tr>';}).join(''):'<tr><td class="empty" colspan="2">No entries yet.</td></tr>';
   return '<div class="panel"><h2>'+t+'</h2><div class="wrap"><table style="min-width:0"><tbody>'+b+'</tbody></table></div></div>';
 }
 function advBal(){
@@ -223,7 +342,7 @@ function advBal(){
     if(r.type==='Advance given')m[n]+=+r.amount||0;if(r.type==='Advance recovered')m[n]-=+r.amount||0;});
   var ks=Object.keys(m).filter(function(n){return m[n]!==0;}).sort();
   var b=ks.length?ks.map(function(n){return '<tr><td>'+esc(n)+'</td><td class="n">'+inr(m[n])+'</td></tr>';}).join(''):'<tr><td class="empty" colspan="2">No advance pending.</td></tr>';
-  return '<div class="panel"><h2>Advance pending by staff</h2><div class="wrap"><table style="min-width:0"><tbody>'+b+'</tbody></table></div></div>';
+  return '<div class="panel"><h2>Advance pending by staff (Overall)</h2><div class="wrap"><table style="min-width:0"><tbody>'+b+'</tbody></table></div></div>';
 }
 
 function module(k){
@@ -237,12 +356,13 @@ function module(k){
     h+='</label>';
   });
   h+='<button class="btn" type="submit">Save entry</button></form></div>';
-  var rows=DB[k].map(function(r,i){return {r:r,i:i};}).filter(function(o){return !q||JSON.stringify(o.r).toLowerCase().indexOf(q)>-1;});
+  var monthFiltered=DB[k].map(function(r,i){return {r:r,i:i};}).filter(function(o){return selMonth==='ALL'||ymKey(o.r.date)===selMonth;});
+  var rows=monthFiltered.filter(function(o){return !q||JSON.stringify(o.r).toLowerCase().indexOf(q)>-1;});
   rows.sort(function(a,b){return (b.r.date||'').localeCompare(a.r.date||'')||b.i-a.i;});
-  h+='<div class="panel"><h2>Register</h2><div class="tools"><input id="q" type="search" placeholder="Search entries" value="'+esc(q)+'" aria-label="Search entries"><button class="btn ghost" onclick="window.print()">Print</button></div><div class="wrap"><table><thead><tr>';
+  h+='<div class="panel"><h2>Register \u2013 '+esc(ymLabel(selMonth))+'</h2><div class="tools"><input id="q" type="search" placeholder="Search entries" value="'+esc(q)+'" aria-label="Search entries"><button class="btn ghost" onclick="window.print()">Print</button></div><div class="wrap"><table><thead><tr>';
   M.fields.forEach(function(f){h+='<th class="'+(f.t==='num'?'n':'')+'">'+f.l+'</th>';});
   h+='<th></th></tr></thead><tbody>';
-  if(!rows.length)h+='<tr><td class="empty" colspan="'+(M.fields.length+1)+'">No entries yet. Fill the form above and save.</td></tr>';
+  if(!rows.length)h+='<tr><td class="empty" colspan="'+(M.fields.length+1)+'">No entries for '+esc(ymLabel(selMonth))+'.</td></tr>';
   rows.forEach(function(o){
     h+='<tr>';M.fields.forEach(function(f){var v=o.r[f.k];
       h+='<td class="'+(f.t==='num'?'n':'')+'">'+(f.k==='amount'?inr(v):esc(v))+'</td>';});
@@ -250,7 +370,7 @@ function module(k){
   });
   var tot=sum(rows.map(function(o){return o.r;}),k==='salary'?cashOut:null);
   h+='</tbody><tfoot><tr><td colspan="'+M.fields.length+'">Total'+(k==='salary'?' (excluding recoveries)':'')+'</td><td class="n" colspan="1">'+inr(tot)+'</td></tr></tfoot></table></div></div>';
-  h+=byGroup('Total by '+M.gl.toLowerCase(),DB[k],M.group);
+  h+=byGroup('Total by '+M.gl.toLowerCase()+' ('+esc(ymLabel(selMonth))+')',monthFiltered.map(function(o){return o.r;}),M.group);
   return h;
 }
 
@@ -270,6 +390,7 @@ function bind(k){
 
 function draw(){
   drawTabs();
+  drawMonthBar();
   var v=document.getElementById('view');
   if(tab==='home'){v.innerHTML=home();v.onclick=null;}
   else{v.innerHTML=module(tab);bind(tab);}
