@@ -78,6 +78,11 @@ tfoot td{font-weight:700;background:var(--hi)}
 .seg label{flex-direction:row;align-items:center;gap:5px;color:var(--ink);font-size:.9rem;border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer;background:var(--bg)}
 .seg input{width:auto;padding:0}
 tr.grp td{background:var(--hi);font-weight:700}
+#loginView{position:fixed;inset:0;z-index:200;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px}
+.lcard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px;width:100%;max-width:380px}
+.lcard h2{margin:0 0 4px;font-size:1.2rem}.lcard p{margin:0 0 14px;color:var(--mute)}
+.lcard label{margin-bottom:10px}.lcard .btn{width:100%;margin-top:4px}
+#lgMsg{min-height:1.3em;margin-top:10px;color:var(--warn);font-size:.9rem}
 </style>
 </head>
 <body>
@@ -88,8 +93,10 @@ tr.grp td{background:var(--hi);font-weight:700}
       <p>Van fuel, staff pay, expenses and student fees in one place. Entries are saved in this browser and sent to your Google Sheet.</p>
     </div>
     <div class="hd-actions noprint">
+      <span id="who" style="display:none;align-self:center;color:var(--mute);font-size:.9rem"></span>
       <button id="uploadAllBtn" class="btn ghost" onclick="uploadAllLocal()">&#8593; Upload All Local Data</button>
       <button id="syncBtn" class="btn" onclick="syncNow()">&#8635; Sync</button>
+      <button id="logoutBtn" class="btn ghost" style="display:none" onclick="logout()">Log out</button>
     </div>
   </div>
 </header>
@@ -99,8 +106,9 @@ tr.grp td{background:var(--hi);font-weight:700}
 
 <script>
 var KEY='schoolAccountRegister_v1';
-var DB={fuel:[],repair:[],salary:[],expense:[],fees:[],children:[],attendance:[]};
-try{var s=localStorage.getItem(KEY);if(s)DB=Object.assign(DB,JSON.parse(s));}catch(e){}
+function EMPTY(){return {fuel:[],repair:[],salary:[],expense:[],fees:[],children:[],attendance:[]};}
+var DB=EMPTY();
+function loadDB(){DB=EMPTY();try{var s=localStorage.getItem(KEY);if(s)DB=Object.assign(DB,JSON.parse(s));}catch(e){}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(DB));}catch(e){}}
 var today=new Date().toISOString().slice(0,10);
 var SESS=['2025-26','2026-27','2027-28'];
@@ -151,13 +159,71 @@ var MOD={
   {k:'status',l:'Status',t:'sel',o:['Present','Absent','Leave']},{k:'note',l:'Remarks',t:'text',opt:1}]}
 };
 
-var SHEET_URL='https://script.google.com/macros/s/AKfycbzmOjwy3fR8_D9BSjPLIY7RNIvX7FMbFMHmbR4N9bvTq4SIPalwETUaouxGhjOb2HBH8Q/exec';
+var SHEET_URL='https://script.google.com/macros/s/AKfycbxxhVdh2OFa2y_BPYdAABdJISOhm3ngsUefccuslOFDb7Bd8wB0NJjR1TVTGWPQvrZecQ/exec';
 
 var toastTimer;
 function toast(m){var t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';t.setAttribute('role','status');document.body.appendChild(t);}
   t.textContent=m;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.classList.remove('show');},3500);}
 function clean(r){var o={};Object.keys(r).forEach(function(x){if(x.charAt(0)!=='_')o[x]=r[x];});return o;}
-function post(p){return fetch(SHEET_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(p)});}
+var AUTH=!!SHEET_URL,SES=null,SKEY='schoolRegisterSession';
+function isTeacher(){return !!(SES&&SES.role==='teacher');}
+function chk(j){
+  if(j&&j.error==='auth'){SES=null;try{sessionStorage.removeItem(SKEY);}catch(e){}showLogin('Your session ended. Please log in again.');throw new Error('Session ended. Please log in again.');}
+  if(!j||j.ok===false)throw new Error((j&&j.error)||'Request failed');
+  return j;
+}
+function post(p){
+  if(SES)p.token=SES.token;
+  return fetch(SHEET_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(p)}).then(function(r){return r.json();}).then(chk);
+}
+function showLogin(msg){
+  var v=document.getElementById('loginView');
+  if(!v){v=document.createElement('div');v.id='loginView';document.body.appendChild(v);}
+  v.innerHTML='<div class="lcard"><h2>Rainbow Child Development Center</h2><p>Log in to open the register.</p>'+
+   '<label>User name<input id="lgUser" autocomplete="username" autocapitalize="none"></label>'+
+   '<label>Password<input id="lgPass" type="password" autocomplete="current-password"></label>'+
+   '<button class="btn" id="lgBtn" type="button">Log in</button><div id="lgMsg" role="alert">'+esc(msg||'')+'</div></div>';
+  document.getElementById('lgBtn').onclick=doLogin;
+  document.getElementById('lgPass').onkeydown=function(e){if(e.key==='Enter')doLogin();};
+  document.getElementById('lgUser').onkeydown=function(e){if(e.key==='Enter')document.getElementById('lgPass').focus();};
+  document.getElementById('who').style.display='none';document.getElementById('logoutBtn').style.display='none';
+  setTimeout(function(){document.getElementById('lgUser').focus();},50);
+}
+function doLogin(){
+  var u=document.getElementById('lgUser').value.trim(),p=document.getElementById('lgPass').value;
+  var m=document.getElementById('lgMsg'),b=document.getElementById('lgBtn');
+  if(!u||!p){m.textContent='Enter your user name and password.';return;}
+  b.disabled=true;m.style.color='var(--mute)';m.textContent='Checking\u2026';
+  post({action:'login',user:u,pass:p}).then(function(j){
+    SES={token:j.token,role:j.role,teacher:j.teacher||'',name:j.name};
+    try{sessionStorage.setItem(SKEY,JSON.stringify(SES));}catch(e){}
+    startApp();
+  }).catch(function(e){
+    m.style.color='var(--warn)';
+    m.textContent=(e&&e.message&&e.message!=='Failed to fetch')?e.message:'Cannot reach the server. Check your internet connection and the web app link.';
+    b.disabled=false;
+  });
+}
+function startApp(){
+  var lv=document.getElementById('loginView');if(lv)lv.remove();
+  KEY=isTeacher()?'schoolRegisterTeacher_'+String(SES.name).toLowerCase().replace(/[^a-z0-9]/g,''):'schoolAccountRegister_v1';
+  loadDB();
+  if(SES){var w=document.getElementById('who');w.textContent=SES.name+' ('+SES.role+')';w.style.display='';document.getElementById('logoutBtn').style.display='';}
+  document.getElementById('uploadAllBtn').style.display=isTeacher()?'none':'';
+  if(isTeacher()){tab='attendance';attSel.teacher=SES.teacher;attSel.all=false;}
+  draw();
+  if(SES)syncNow(true);
+}
+function logout(){
+  SES=null;try{sessionStorage.removeItem(SKEY);}catch(e){}
+  DB=EMPTY();tab='home';selMonth='ALL';q='';
+  document.getElementById('view').innerHTML='';document.getElementById('tabs').innerHTML='';document.getElementById('monthBar').innerHTML='';
+  showLogin('');
+}
+function boot(){
+  if(AUTH){try{var s=sessionStorage.getItem(SKEY);if(s)SES=JSON.parse(s);}catch(e){}if(SES&&SES.token)startApp();else{SES=null;showLogin('');}}
+  else{loadDB();draw();}
+}
 function sendToSheet(k,r){
   if(!SHEET_URL)return;
   post({module:k,row:clean(r)})
@@ -207,9 +273,9 @@ function uploadAllLocal(){
   });
 }
 
-function syncNow(){
+function syncNow(quiet){
   if(!SHEET_URL||syncing)return;
-  if(!confirm('Sync will upload any unsent entries, then replace the list on this device with the data in your Google Sheet. Continue?'))return;
+  if(!quiet&&!confirm('Sync will upload any unsent entries, then replace the list on this device with the data in your Google Sheet. Continue?'))return;
   syncing=true;
   var b=document.getElementById('syncBtn');
   var ub=document.getElementById('uploadAllBtn');
@@ -217,12 +283,8 @@ function syncNow(){
   var chain=Promise.resolve();
   Object.keys(MOD).forEach(function(k){DB[k].forEach(function(r){
     if(r._u)chain=chain.then(function(){return post({module:k,row:clean(r)}).then(function(){delete r._u;});});});});
-  chain.then(function(){save();return fetch(SHEET_URL+'?action=read');})
-   .then(function(res){return res.text();})
-   .then(function(txt){
-     var j;
-     try{j=JSON.parse(txt);}catch(e){throw new Error('Access blocked. Check "Who has access: Anyone" in Apps Script.');}
-     if(!j.ok)throw new Error(j.error||'Read failed');
+  chain.then(function(){save();return post({action:'read'});})
+   .then(function(j){
      Object.keys(MOD).forEach(function(k){
        if(j.data[k])DB[k]=j.data[k].concat(DB[k].filter(function(r){return r._u;}));});
      save();toast('Synced with Google Sheet');draw();})
@@ -380,10 +442,10 @@ function attTab(){
   var kids=attKids(),tl=attSel.teacher.trim();
   var h='<div class="panel noprint"><h2>Mark attendance</h2><div class="fgrid">'+
    '<label>Date<input type="date" id="atDate" value="'+esc(attSel.date)+'"></label>'+
-   '<label>Teacher / therapist<input id="atTeacher" list="dl_teachers" value="'+esc(attSel.teacher)+'" placeholder="Select or type name"></label>'+
-   '<label style="flex-direction:row;align-items:center;gap:8px;color:var(--ink);font-size:.9rem"><input type="checkbox" id="atAll" style="width:auto;padding:0"'+(attSel.all?' checked':'')+'> Show all children</label></div>'+childList()+
+   '<label>Teacher / therapist<input id="atTeacher" list="dl_teachers" value="'+esc(attSel.teacher)+'" placeholder="Select or type name"'+(isTeacher()?' readonly':'')+'></label>'+
+   (isTeacher()?'':'<label style="flex-direction:row;align-items:center;gap:8px;color:var(--ink);font-size:.9rem"><input type="checkbox" id="atAll" style="width:auto;padding:0"'+(attSel.all?' checked':'')+'> Show all children</label>')+'</div>'+childList()+
    '<p style="margin:10px 0 4px;color:var(--mute);font-size:.88rem">Children are taken from the Child data tab. Fill in each child\u2019s teacher there so every teacher sees only their own children.</p>';
-  if(!DB.children.length){h+='<div class="empty">No children yet. Add them in the Child data tab first.</div></div>';}
+  if(!DB.children.length){h+='<div class="empty">'+(isTeacher()?'No children are assigned to you yet. Ask the admin to write your name in the Child data tab.':'No children yet. Add them in the Child data tab first.')+'</div></div>';}
   else{
     if(tl&&!attSel.all&&!DB.children.some(function(c){return String(c.teacher||'').trim().toLowerCase()===tl.toLowerCase();}))
       h+='<div class="empty" style="padding:4px 0">No child is assigned to \u201C'+esc(tl)+'\u201D yet, so all children are shown.</div>';
@@ -429,7 +491,7 @@ function bindAtt(){
   var d=document.getElementById('atDate'),t=document.getElementById('atTeacher'),a=document.getElementById('atAll');
   d.onchange=function(){attSel.date=d.value||today;attSel.teacher=t.value;again();};
   t.onchange=function(){attSel.teacher=t.value;again();};
-  a.onchange=function(){attSel.teacher=t.value;attSel.all=a.checked;again();};
+  if(a)a.onchange=function(){attSel.teacher=t.value;attSel.all=a.checked;again();};
   var ap=document.getElementById('atAllP');
   if(ap)ap.onclick=function(){document.querySelectorAll('.seg input[value="Present"]').forEach(function(c){c.checked=true;});};
   var sv=document.getElementById('atSave');
@@ -498,9 +560,9 @@ function esc(v){return String(v==null?'':v).replace(/[&<>"]/g,function(c){return
 function cashOut(r){return r.type==='Advance recovered'?0:Number(r.amount)||0;}
 
 function drawTabs(){
-  var h='<button role="tab" data-t="home" aria-selected="'+(tab==='home')+'">Summary</button>';
-  Object.keys(MOD).forEach(function(k){h+='<button role="tab" data-t="'+k+'" aria-selected="'+(tab===k)+'">'+MOD[k].title+'</button>';});
-  h+='<button role="tab" data-t="bill" aria-selected="'+(tab==='bill')+'">Bill generator</button>';
+  var teach=isTeacher(),h=teach?'':'<button role="tab" data-t="home" aria-selected="'+(tab==='home')+'">Summary</button>';
+  Object.keys(MOD).forEach(function(k){if(teach&&k!=='attendance')return;h+='<button role="tab" data-t="'+k+'" aria-selected="'+(tab===k)+'">'+MOD[k].title+'</button>';});
+  if(!teach)h+='<button role="tab" data-t="bill" aria-selected="'+(tab==='bill')+'">Bill generator</button>';
   var n=document.getElementById('tabs');n.innerHTML=h;
   n.onclick=function(e){var t=e.target.getAttribute('data-t');if(t){tab=t;q='';draw();}};
 }
@@ -605,6 +667,7 @@ function bind(k){
 }
 
 function draw(){
+  if(isTeacher())tab='attendance';
   drawTabs();
   if(tab==='bill'||(MOD[tab]&&MOD[tab].plain))document.getElementById('monthBar').innerHTML='';else drawMonthBar();
   var v=document.getElementById('view');
@@ -613,7 +676,7 @@ function draw(){
   else if(tab==='bill'){v.innerHTML=billTab();v.onclick=null;bindBill();}
   else{v.innerHTML=module(tab);bind(tab);}
 }
-draw();
+boot();
 </script>
 </body>
 </html>
