@@ -464,6 +464,12 @@ function sendOps(ops,msg){
   if(SHEET_URL)ops.forEach(function(o){chain=chain.then(function(){return post(o.r?{module:'attendance',row:clean(o.r)}:o);}).then(function(){if(o.r)delete o.r._u;},function(){});});
   chain.then(function(){save();toast(msg+(SHEET_URL?' and sent to Google Sheet':''));});
 }
+function qBtn(old,i){
+  var inn=old&&old.status==='Present'&&old.timeIn,out=old&&old.timeOut;
+  if(inn&&out)return '<span class="chip" style="margin:0;color:var(--acc);border-color:var(--acc)">\u2713 Done \u00B7 '+hm(mins(old))+'</span>';
+  if(inn)return '<button class="btn" type="button" data-q="out" data-i="'+i+'" style="background:#b45309;color:#fff">Check out</button>';
+  return '<button class="btn" type="button" data-q="in" data-i="'+i+'">Check in</button>';
+}
 function attKind(c){return c&&c.program==='School / day care'?'School':'Session';}
 function mins(r){if(!r.timeIn||!r.timeOut||r.status!=='Present')return 0;var a=r.timeIn.split(':'),b=r.timeOut.split(':');var d=(+b[0]*60+ +b[1])-(+a[0]*60+ +a[1]);return d>0?d:0;}
 function hm(m){return m>0?Math.floor(m/60)+':'+('0'+(m%60)).slice(-2)+' h':'-';}
@@ -482,10 +488,10 @@ function attTab(){
       var ix=findAtt(attSel.date,tl,c.name),old=ix>=0?DB.attendance[ix]:null,cur=old?old.status:'',kind=attKind(c);
       h+='<div class="arow"><span><b>'+esc(c.name)+'</b><span class="chip">'+(kind==='School'?'School':'Session')+'</span>'+(c.teacher?' <span style="color:var(--mute);font-size:.85rem">\u00B7 '+esc(c.teacher)+'</span>':'')+'</span><span class="seg">'+
         ['Present','Absent','Leave'].map(function(s){return '<label><input type="radio" name="st'+i+'" value="'+s+'"'+(cur===s?' checked':'')+'> '+s+'</label>';}).join('')+'</span>'+
-        (kind==='Session'?'<span class="tm"><button class="btn" type="button" data-q="in" data-i="'+i+'">Time in now</button><label>In <input type="time" name="ti'+i+'" value="'+esc(old&&old.timeIn||'')+'"></label><button class="btn ghost" type="button" data-q="out" data-i="'+i+'">Time out now</button><label>Out <input type="time" name="to'+i+'" value="'+esc(old&&old.timeOut||'')+'"></label></span>':'')+'</div>';
+        (kind==='Session'?'<span class="tm">'+qBtn(old,i)+'<label>In <input type="time" name="ti'+i+'" value="'+esc(old&&old.timeIn||'')+'"></label><label>Out <input type="time" name="to'+i+'" value="'+esc(old&&old.timeOut||'')+'"></label></span>':'')+'</div>';
     });
-    h+='<p style="margin:8px 0 0;color:var(--mute);font-size:.85rem">School children: attendance only. Session children: tap Time in now when the child arrives and Time out now when they leave (today only). You can also type or correct the times and press Save attendance.</p>';
-    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn ghost" id="atAllP" type="button">Mark all present</button><button class="btn" id="atSave" type="button">Save attendance</button></div></div>';
+    h+='<p style="margin:8px 0 0;color:var(--mute);font-size:.85rem">School children: attendance only. Session children: tap Check in when the child arrives and Check out when they leave (today only). You can also type or correct the times and press Save attendance.</p>';
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn ghost" id="atAllP" type="button">Mark all present</button>'+(kids.some(function(c){return attKind(c)==='Session';})?'<button class="btn ghost" id="atInAll" type="button">Check in all session children</button><button class="btn ghost" id="atOutAll" type="button">Check out all</button>':'')+'<button class="btn" id="atSave" type="button">Save attendance</button></div></div>';
   }
   return h+attReport()+attEntries();
 }
@@ -560,28 +566,48 @@ function bindAtt(){
     chain.then(function(){save();toast('Attendance saved for '+n+(n>1?' children':' child')+(SHEET_URL?' and sent to Google Sheet':''));});
     again();
   };
-  function quickStamp(i,which){
-    var teacher=t.value.trim();
-    if(!teacher){toast('Enter the teacher / therapist name first');return;}
-    if((d.value||today)!==today){toast('One-click time works for today. Change the date to today, or type the times and press Save attendance.');return;}
-    var c=attKids()[i];if(!c)return;
+  function stampOne(c,teacher,which,ops){
     var ix=findAtt(today,teacher,c.name),old=ix>=0?DB.attendance[ix]:null,now=nowHM(),ti=old&&old.timeIn||'',to=old&&old.timeOut||'';
     if(which==='in'){
-      if(old&&old.status==='Present'&&old.timeIn){toast('Time in for '+c.name+' is already '+old.timeIn+'. Edit the box to change it.');return;}
+      if(old&&old.status==='Present'&&old.timeIn)return {err:'Time in for '+c.name+' is already '+old.timeIn+'. Edit the box to change it.'};
       ti=now;to='';
     }else{
-      if(!ti){toast('Press Time in now first for '+c.name+'.');return;}
-      if(to){toast('Time out for '+c.name+' is already '+to+'. Edit the box to change it.');return;}
-      if(now<=ti){toast('Time out must be after time in ('+ti+').');return;}
+      if(!ti||!(old&&old.status==='Present'))return {err:'Check in '+c.name+' first.'};
+      if(to)return {err:'Time out for '+c.name+' is already '+to+'. Edit the box to change it.'};
+      if(now<=ti)return {err:'Time out must be after time in ('+ti+') for '+c.name+'.'};
       to=now;
     }
-    var ops=[];
     if(old){DB.attendance.splice(ix,1);if(!old._u&&SHEET_URL)ops.push({action:'delete',module:'attendance',row:clean(old)});}
     var r={date:today,teacher:teacher,child:c.name,status:'Present',note:old&&old.note||'',timeIn:ti,timeOut:to,kind:'Session',_u:1};
-    DB.attendance.push(r);ops.push({r:r});save();
-    sendOps(ops,(which==='in'?'Time in ':'Time out ')+(which==='in'?ti:to)+' recorded for '+c.name);
-    attSel.teacher=teacher;attSel.date=today;again();
+    DB.attendance.push(r);ops.push({r:r});
+    return {ok:1,time:which==='in'?ti:to};
   }
+  function stampGate(){
+    var teacher=t.value.trim();
+    if(!teacher){toast('Enter the teacher / therapist name first');return '';}
+    if((d.value||today)!==today){toast('One-click time works for today. Change the date to today, or type the times and press Save attendance.');return '';}
+    attSel.teacher=teacher;attSel.date=today;return teacher;
+  }
+  function quickStamp(i,which){
+    var teacher=stampGate();if(!teacher)return;
+    var c=attKids()[i];if(!c)return;
+    var ops=[],res=stampOne(c,teacher,which,ops);
+    if(res.err){toast(res.err);return;}
+    save();sendOps(ops,(which==='in'?'Checked in ':'Checked out ')+res.time+' \u2013 '+c.name);again();
+  }
+  function stampAll(which){
+    var teacher=stampGate();if(!teacher)return;
+    var ops=[],n=0;
+    attKids().forEach(function(c){
+      if(attKind(c)!=='Session')return;
+      if(stampOne(c,teacher,which,ops).ok)n++;
+    });
+    if(!n){toast(which==='in'?'Nobody is left to check in.':'Nobody is checked in, or everyone is already checked out.');return;}
+    save();sendOps(ops,(which==='in'?'Checked in ':'Checked out ')+n+(n>1?' session children':' session child'));again();
+  }
+  var ia=document.getElementById('atInAll'),oa=document.getElementById('atOutAll');
+  if(ia)ia.onclick=function(){stampAll('in');};
+  if(oa)oa.onclick=function(){stampAll('out');};
   v.onclick=function(e){
     var qb=e.target.getAttribute('data-q');
     if(qb){quickStamp(+e.target.getAttribute('data-i'),qb);return;}
