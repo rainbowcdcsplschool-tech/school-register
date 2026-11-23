@@ -159,7 +159,7 @@ var MOD={
   {k:'date',l:'Joining date',t:'date'},{k:'name',l:'Child name',t:'text'},{k:'age',l:'Age',t:'text',opt:1,ph:'e.g. 6 years'},
   {k:'parent',l:'Parent / guardian',t:'text',opt:1},{k:'phone',l:'Mobile no.',t:'text',opt:1},{k:'address',l:'Address',t:'text',opt:1},
   {k:'program',l:'Program',t:'sel',o:['Session','School / day care','Both']},{k:'note',l:'Remarks',t:'text',opt:1},
-  {k:'teacher',l:'Teacher / therapist',t:'text',opt:1,dl:'teachers'}]},
+  {k:'teacher',l:'Teacher / therapist (more than one: separate with comma)',t:'text',opt:1,dl:'teachers',ph:'e.g. Dr. Dilip, Neha'}]},
  attendance:{title:'Attendance',custom:1,group:'status',gl:'Status',fields:[
   {k:'date',l:'Date',t:'date'},{k:'teacher',l:'Teacher / therapist',t:'text'},{k:'child',l:'Child name',t:'text'},
   {k:'status',l:'Status',t:'sel',o:['Present','Absent','Leave']},{k:'note',l:'Remarks',t:'text',opt:1},
@@ -239,7 +239,7 @@ function startApp(){
 }
 function logout(){
   SES=null;try{sessionStorage.removeItem(SKEY);}catch(e){}
-  DB=EMPTY();tab='home';selMonth='ALL';q='';
+  DB=EMPTY();tab='home';selMonth='ALL';q='';editIdx=null;
   document.getElementById('view').innerHTML='';document.getElementById('tabs').innerHTML='';document.getElementById('monthBar').innerHTML='';
   showLogin('');
 }
@@ -556,11 +556,12 @@ function showMulti(html){
 }
 
 var attSel={date:today,teacher:'',all:false};
-function teacherNames(){var m={};DB.children.forEach(function(r){if(r.teacher)m[String(r.teacher).trim()]=1;});DB.attendance.forEach(function(r){if(r.teacher)m[String(r.teacher).trim()]=1;});DB.salary.forEach(function(r){if(r.staff)m[String(r.staff).trim()]=1;});return Object.keys(m).sort();}
+function teachersOf(c){return String(c&&c.teacher||'').split(/[,;]/).map(function(x){return x.trim().toLowerCase();}).filter(Boolean);}
+function teacherNames(){var m={};DB.children.forEach(function(r){String(r.teacher||'').split(/[,;]/).forEach(function(x){x=x.trim();if(x)m[x]=1;});});DB.attendance.forEach(function(r){if(r.teacher)m[String(r.teacher).trim()]=1;});DB.salary.forEach(function(r){if(r.staff)m[String(r.staff).trim()]=1;});return Object.keys(m).sort();}
 function attKids(){
   var t=attSel.teacher.trim().toLowerCase();
   var all=DB.children.slice().sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''));});
-  var mine=all.filter(function(c){return t&&String(c.teacher||'').trim().toLowerCase()===t;});
+  var mine=all.filter(function(c){return t&&teachersOf(c).indexOf(t)>-1;});
   return (attSel.all||!mine.length)?all:mine;
 }
 function findAtt(date,teacher,child){
@@ -593,7 +594,7 @@ function attTab(){
    '<p style="margin:10px 0 4px;color:var(--mute);font-size:.88rem">Children are taken from the Child data tab. Fill in each child\u2019s teacher there so every teacher sees only their own children.</p>';
   if(!DB.children.length){h+='<div class="empty">'+(isTeacher()?'No children are assigned to you yet. Ask the admin to write your name in the Child data tab.':'No children yet. Add them in the Child data tab first.')+'</div></div>';}
   else{
-    if(tl&&!attSel.all&&!DB.children.some(function(c){return String(c.teacher||'').trim().toLowerCase()===tl.toLowerCase();}))
+    if(tl&&!attSel.all&&!DB.children.some(function(c){return teachersOf(c).indexOf(tl.toLowerCase())>-1;}))
       h+='<div class="empty" style="padding:4px 0">No child is assigned to \u201C'+esc(tl)+'\u201D yet, so all children are shown.</div>';
     kids.forEach(function(c,i){
       var ix=findAtt(attSel.date,tl,c.name),old=ix>=0?DB.attendance[ix]:null,cur=old?old.status:'',kind=attKind(c);
@@ -727,7 +728,7 @@ function bindAtt(){
 }
 function openBillFor(i){var r=DB.fees[i];if(!r)return;bgSel.child=r.child||'';bgSel.month=r.month||'';tab='bill';q='';draw();window.scrollTo(0,0);}
 
-var tab='home',q='',selMonth='ALL';
+var tab='home',q='',selMonth='ALL',editIdx=null;
 
 function ymKey(d){var s=String(d||'');return s.length>=7?s.slice(0,7):'Unknown';}
 function ymLabel(ym){
@@ -771,7 +772,7 @@ function drawTabs(){
   Object.keys(MOD).forEach(function(k){if(teach&&k!=='attendance')return;h+='<button role="tab" data-t="'+k+'" aria-selected="'+(tab===k)+'">'+MOD[k].title+'</button>';});
   if(!teach)h+='<button role="tab" data-t="bill" aria-selected="'+(tab==='bill')+'">Bill generator</button>';
   var n=document.getElementById('tabs');n.innerHTML=h;
-  n.onclick=function(e){var t=e.target.getAttribute('data-t');if(t){tab=t;q='';draw();}};
+  n.onclick=function(e){var t=e.target.getAttribute('data-t');if(t){tab=t;q='';editIdx=null;draw();}};
 }
 
 function monthWiseSummaryTable(){
@@ -830,16 +831,16 @@ function advBal(){
 }
 
 function module(k){
-  var M=MOD[k],h='<div class="panel"><h2>Add entry \u2013 '+M.title+'</h2><form id="f">';
+  var M=MOD[k],ed=(editIdx!==null&&DB[k][editIdx])||null,h='<div class="panel"><h2>'+(ed?'Edit entry \u2013 ':'Add entry \u2013 ')+M.title+'</h2><form id="f">';
   M.fields.forEach(function(f){
-    var ro=f.calc?' readonly tabindex="-1"':'',req=f.opt||f.calc?'':' required';
+    var ro=f.calc?' readonly tabindex="-1"':'',req=f.opt||f.calc?'':' required',ev=ed?ed[f.k]:undefined;
     h+='<label>'+f.l;
-    if(f.t==='sel'){h+='<select name="'+f.k+'">'+f.o.map(function(o){return '<option'+(o===f.def?' selected':'')+'>'+o+'</option>';}).join('')+'</select>';}
-    else if(f.t==='num'){h+='<input name="'+f.k+'" type="number" step="any" min="0" inputmode="decimal" placeholder="'+esc(f.l)+'"'+(f.def?' value="'+f.def+'"':'')+ro+req+'>';}
-    else{h+='<input name="'+f.k+'" type="'+f.t+'"'+(f.t==='date'?' value="'+today+'"':'')+(f.t!=='date'&&(f.ph||f.l)?' placeholder="'+esc(f.ph||f.l)+'"':'')+(f.dl?' list="dl_'+f.dl+'"':'')+req+'>';}
+    if(f.t==='sel'){h+='<select name="'+f.k+'">'+f.o.map(function(o){return '<option'+(o===(ev!=null?ev:f.def)?' selected':'')+'>'+o+'</option>';}).join('')+'</select>';}
+    else if(f.t==='num'){h+='<input name="'+f.k+'" type="number" step="any" min="0" inputmode="decimal" placeholder="'+esc(f.l)+'"'+(ev!=null?' value="'+esc(ev)+'"':(f.def?' value="'+f.def+'"':''))+ro+req+'>';}
+    else{h+='<input name="'+f.k+'" type="'+f.t+'"'+(f.t==='date'?' value="'+esc(ev!=null?ev:today)+'"':(ev!=null?' value="'+esc(ev)+'"':''))+(f.t!=='date'&&(f.ph||f.l)?' placeholder="'+esc(f.ph||f.l)+'"':'')+(f.dl?' list="dl_'+f.dl+'"':'')+req+'>';}
     h+='</label>';
   });
-  h+='<button class="btn" type="submit">Save entry</button>'+childList()+'</form></div>';
+  h+=(ed?'<button class="btn" type="submit">Save changes</button><button class="btn ghost" type="button" id="fCancel">Cancel</button>':'<button class="btn" type="submit">Save entry</button>')+childList()+'</form></div>';
   var monthFiltered=DB[k].map(function(r,i){return {r:r,i:i};}).filter(function(o){return M.plain||selMonth==='ALL'||ymKey(o.r.date)===selMonth;});
   var rows=monthFiltered.filter(function(o){return !q||JSON.stringify(o.r).toLowerCase().indexOf(q)>-1;});
   rows.sort(M.plain?function(a,b){return String(a.r.name||'').localeCompare(String(b.r.name||''));}:function(a,b){return (b.r.date||'').localeCompare(a.r.date||'')||b.i-a.i;});
@@ -850,7 +851,7 @@ function module(k){
   rows.forEach(function(o){
     h+='<tr>';M.fields.forEach(function(f){var v=o.r[f.k];
       h+='<td class="'+(f.t==='num'?'n':'')+'">'+(f.k==='amount'?inr(v):esc(v))+'</td>';});
-    h+='<td>'+(k==='fees'?'<span class="noprint"><button class="btn ghost" data-b="'+o.i+'" style="padding:3px 9px;margin-right:6px">Bill</button></span>':'')+'<button class="x" data-d="'+o.i+'" aria-label="Delete entry" title="Delete">\u2715</button></td></tr>';
+    h+='<td><span class="noprint"><button class="btn ghost" data-e="'+o.i+'" style="padding:3px 9px;margin-right:6px">Edit</button></span>'+(k==='fees'?'<span class="noprint"><button class="btn ghost" data-b="'+o.i+'" style="padding:3px 9px;margin-right:6px">Bill</button></span>':'')+'<button class="x" data-d="'+o.i+'" aria-label="Delete entry" title="Delete">\u2715</button></td></tr>';
   });
   var tot=sum(rows.map(function(o){return o.r;}),k==='salary'?cashOut:null);
   if(M.plain){h+='</tbody></table></div></div>';return h;}
@@ -866,14 +867,20 @@ function bind(k){
   /* Fees: choosing a treatment fills the default price (you can still edit it) */
   if(k==='fees'){var tr=f.elements.treatment,am=f.elements.amount;
     var fill=function(){if(PRICE[tr.value]!=null)am.value=PRICE[tr.value];};
-    tr.onchange=fill;fill();}
+    tr.onchange=fill;if(editIdx===null)fill();}
   f.onsubmit=function(e){e.preventDefault();var r={};
     M.fields.forEach(function(x){var v=f.elements[x.k].value;r[x.k]=x.t==='num'?(parseFloat(v)||0):v;});
     if(M.fields.some(function(x){return x.k==='amount';})&&!(r.amount>0)){alert('Enter an amount greater than zero.');return;}
+    if(editIdx!==null&&DB[k][editIdx]){
+      var old=DB[k][editIdx];DB[k][editIdx]=r;r._u=1;editIdx=null;save();draw();
+      if(SHEET_URL&&!old._u)post({action:'delete',module:k,row:clean(old)}).catch(function(){}).then(function(){sendToSheet(k,r);});
+      else sendToSheet(k,r);
+      return;}
     r._u=1;DB[k].push(r);save();sendToSheet(k,r);draw();};
+  var fc=document.getElementById('fCancel');if(fc)fc.onclick=function(){editIdx=null;draw();};
   var s=document.getElementById('q');
   s.oninput=function(){q=s.value.toLowerCase();var p=s.selectionStart;draw();var n=document.getElementById('q');n.focus();n.setSelectionRange(p,p);};
-  document.getElementById('view').onclick=function(e){var b=e.target.getAttribute('data-b');if(b!==null){openBillFor(+b);return;}var d=e.target.getAttribute('data-d');
+  document.getElementById('view').onclick=function(e){var ee=e.target.getAttribute('data-e');if(ee!==null){editIdx=+ee;draw();window.scrollTo(0,0);return;}var b=e.target.getAttribute('data-b');if(b!==null){openBillFor(+b);return;}var d=e.target.getAttribute('data-d');
     if(d!==null&&confirm('Delete this entry?')){var gone=DB[k].splice(+d,1)[0];save();if(!gone._u&&SHEET_URL)post({action:'delete',module:k,row:clean(gone)}).catch(function(){});draw();}};
 }
 
